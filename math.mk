@@ -21,6 +21,11 @@ define digit
 $(strip $(foreach digit,0 1 2 3 4 5 6 7 8 9,$(and $(filter %$(digit),$(1)),$(digit))))
 endef
 
+# extracts the first digit from a number, make's string handling is weak.
+define ldigit
+$(strip $(foreach digit,0 1 2 3 4 5 6 7 8 9,$(and $(filter $(digit)%,$(1)),$(digit))))
+endef
+
 # - increment -
 # strategy: increment the last digit and reconcat with the rest of the string,
 #           if it overflows, recursively increment the rest of the number too.
@@ -213,7 +218,6 @@ number = $(or $(patsubst -0,0,$(patsubst +%,%,$(1))),0)
 - = $(if $(filter -%,$(2)),$(call +,$(1),$(patsubst -%,%,$(2))),$(if $(filter -%,$(1)),-$(call +,$(2),$(patsubst -%,%,$(1))),$(eval $(call -.compute,$(call number,$(1)),$(call number,$(2))))$(-.result)))
 
 define for.step
-  $$(info 2:$(2),3:$(3))
   ifneq ($(2),$(3))
     $(1) := $(2)
     $$(eval for.result += $(value for.body))
@@ -244,6 +248,55 @@ define >.compute.2
   endif
 endef
 
+$(foreach lhs,$(call range,0,10),\
+  $(foreach rhs,$(call range,$(lhs),10),\
+    $(eval * := 0) \
+    $(foreach _,$(call range,0,$(rhs)),\
+      $(eval * := $(call +,$(*),$(lhs)))) \
+   $(eval $(rhs)*$(lhs) := $(*)) \
+   $(eval $(lhs)*$(rhs) := $(*))))
+
+
+define *.compute.lhs
+  *.lhs.d := $$(call ldigit,$(1))
+  *.lhs.t := $$(patsubst $$(*.lhs.d)%,%,$(1))
+  *.result.lhs := $$(call +,$$(*.result.lhs)0,$$($$(*.lhs.d)*$(2)))
+  ifdef *.lhs.t
+    $$(eval $$(call *.compute.lhs,$$(*.lhs.t),$(2)))
+  endif
+endef
+
+define *.compute.rhs
+  *.rhs.d := $$(call ldigit,$(2))
+  *.rhs.t := $$(patsubst $$(*.rhs.d)%,%,$(2))
+  *.result.lhs :=
+  *.result := $$(call +,$$(*.result)0,$$(eval $$(call *.compute.lhs,$(1),$$(*.rhs.d)))$$(*.result.lhs))
+  ifdef *.rhs.t
+    $$(eval $$(call *.compute.rhs,$(1),$$(*.rhs.t)))
+  endif
+endef
+
++.toggle = -
+-.toggle = +
+
+define *.reconfigure
+  $$(if $$(filter -%,$(1)), \
+     $$(eval *.sign := $$($$(*.sign).toggle)) \
+     $$(eval $$(call *.reconfigure,$$(patsubst -%,%,$(1)),$(2))), \
+  $$(if $$(filter -%,$(2)), \
+     $$(eval *.sign := $$($$(*.sign).toggle)) \
+     $$(eval $$(call *.reconfigure,$(1),$$(patsubst -%,%,$(2)))), \
+     $$(eval $$(call *.compute.rhs,$(1),$(2)))))
+endef
+
+define *.configure
+  *.sign := +
+  *.result :=
+  $$(eval $$(call *.reconfigure,$$(call number,$(1)),$$(call number,$(2))))
+endef
+
+* = $(eval $(call *.configure,$(1),$(2)))$(call number,$(*.sign)$(*.result))
+
 > = $(eval $(call >.compute.2,$(call number,$(1)),$(call number,$(2))))$(>.result)
 <> = $(eval $(call <>.compute,$(call number,$(1)),$(call number,$(2))))$(<>.result)
 < = $(call >,$(2),$(1))
@@ -251,7 +304,7 @@ endef
 >eq = $(if $(call <,$(1),$(2)),,+)
 
 ifneq ($(filter math,$(MAKECMDGOALS)),)
-  $(shell printf "operation [+,-,>,<>]: ">&2)
+  $(shell printf "operation [+,-,*,>,<>]: ">&2)
   operation := $(shell head -1)
   $(shell printf "lhs (#): " >&2)
   lhs := $(shell head -1)
