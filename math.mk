@@ -13,27 +13,27 @@
 # http://sam.zoy.org/wtfpl/COPYING for more details.
 #------------
 
-# define successor function for digits
+# define base, any radix >= 2 is supported
+base := 0 1
+base += 2 3 4 5 6 7 8 9
+#base += a b c d e f
+$(foreach rule,$(join $(addsuffix +1,$(filter-out $(lastword $(base))-,$(base)-)),$(addprefix :=,$(wordlist 2,$(words $(base)),$(base)))),$(eval $(rule)))
+$(lastword $(base))+1 := 10
+
+# define predecessor function for digits
 # there is no way around this, as these symbols have little meaning to make
-0+1 = 1
-1+1 = 2
-2+1 = 3
-3+1 = 4
-4+1 = 5
-5+1 = 6
-6+1 = 7
-7+1 = 8
-8+1 = 9
-9+1 = 10
+# _: underflow
+0-1 := _
+$(foreach rule,$(join $(addsuffix -1,$(wordlist 2,$(words $(base)),$(base))),$(addprefix :=,$(filter-out $(lastword $(base))-,$(base)-))),$(eval $(rule)))
 
 # extracts the last digit from a number, make's string handling is weak.
 define digit
-$(strip $(foreach digit,0 1 2 3 4 5 6 7 8 9,$(and $(filter %$(digit),$(1)),$(digit))))
+$(strip $(foreach digit,$(base),$(and $(filter %$(digit),$(1)),$(digit))))
 endef
 
 # extracts the first digit from a number, make's string handling is weak.
 define ldigit
-$(strip $(foreach digit,0 1 2 3 4 5 6 7 8 9,$(and $(filter $(digit)%,$(1)),$(digit))))
+$(strip $(foreach digit,$(base),$(and $(filter $(digit)%,$(1)),$(digit))))
 endef
 
 # - increment -
@@ -119,7 +119,8 @@ endef
 
 # - +.table -
 # define a table with the sum of every pair of digits.
-$(foreach x,$(call range,0,10),$(foreach y,$(call range,0,10),$(eval +.table.$(x)+$(y) := $(words $(>.table.$(x)) $(>.table.$(y))))))
+$(foreach x,$(call range,0,10),$(foreach y,$(call range,0,10),\
+  $(eval +.table.$(x)+$(y) := $(word $(words 0 $(>.table.$(x)) $(>.table.$(y))),$(base) $(addprefix 1,$(base))))))
 
 # - + -
 # adds two numbers
@@ -145,19 +146,6 @@ endef
 
 + = $(eval $(call +.compute,$(1),$(2)))$(+.result)
 
-# define predecessor function for digits
-# there is no way around this, as these symbols have little meaning to make
-# _: underflow
-0-1 = _
-1-1 = 0
-2-1 = 1
-3-1 = 2
-4-1 = 3
-5-1 = 4
-6-1 = 5
-7-1 = 6
-8-1 = 7
-9-1 = 8
 
 # - decrement -
 # strategy: decrement the last digit and reconcat with the rest of the string,
@@ -167,7 +155,7 @@ define -1.compute
   -1.t := $$(patsubst %$$(-1.d),%,$(1))
   -1.s := $$($$(-1.d)-1)
   ifeq ($$(-1.s),_)
-    -1.result := $$(if $$(-1.t),$$(patsubst 0%,%,$$(call -1,$$(-1.t)))9,)
+    -1.result := $$(if $$(-1.t),$$(patsubst 0%,%,$$(call -1,$$(-1.t)))$(lastword $(base)),)
   else
     -1.result := $$(-1.t)$$(-1.s)
   endif
@@ -179,8 +167,8 @@ endef
 # leading understore indicates underflow.
 $(foreach x,$(call range,0,10),$(foreach y,$(call range,0,10),$(eval \
   -.table.$(x)-$(y) := $(strip $(if $(filter-out $(>.table.$(x)),$(>.table.$(y))), \
-    _$(words $(filter-out $(>.table.$(words $(filter-out $(>.table.$(x)),$(>.table.$(y))))), 0 $(>.table.9))),\
-    $(words $(filter-out $(>.table.$(y)),$(>.table.$(x)))) \
+    _$(word $(words 0 $(filter-out $(>.table.$(words $(filter-out $(>.table.$(x)),$(>.table.$(y))))), 0 $(>.table.$(lastword $(base))))),$(base)),\
+    $(word $(words 0 $(filter-out $(>.table.$(y)),$(>.table.$(x)))),$(base)) \
   )) \
 )))
 
@@ -266,7 +254,6 @@ $(foreach lhs,$(call range,0,10),\
    $(eval $(rhs)*$(lhs) := $(*)) \
    $(eval $(lhs)*$(rhs) := $(*))))
 
-
 define *.compute.lhs
   *.lhs.d := $$(call ldigit,$(1))
   *.lhs.t := $$(patsubst $$(*.lhs.d)%,%,$(1))
@@ -279,8 +266,12 @@ endef
 define *.compute.rhs
   *.rhs.d := $$(call ldigit,$(2))
   *.rhs.t := $$(patsubst $$(*.rhs.d)%,%,$(2))
-  *.result.lhs :=
-  *.result := $$(call +,$$(*.result)0,$$(eval $$(call *.compute.lhs,$(1),$$(*.rhs.d)))$$(*.result.lhs))
+  *.result.lhs := $$(*.cache.$$(*.rhs.d))
+  ifndef *.result.lhs
+    $$(eval $$(call *.compute.lhs,$(1),$$(*.rhs.d)))
+    *.cache.$(2) := $$(*.result.lhs)
+  endif
+  *.result := $$(call +,$$(*.result)0,$$(*.result.lhs))
   ifdef *.rhs.t
     $$(eval $$(call *.compute.rhs,$(1),$$(*.rhs.t)))
   endif
@@ -291,17 +282,18 @@ endef
 
 define *.reconfigure
   $$(if $$(filter -%,$(1)), \
-     $$(eval *.sign := $$($$(*.sign).toggle)) \
-     $$(eval $$(call *.reconfigure,$$(patsubst -%,%,$(1)),$(2))), \
-  $$(if $$(filter -%,$(2)), \
-     $$(eval *.sign := $$($$(*.sign).toggle)) \
-     $$(eval $$(call *.reconfigure,$(1),$$(patsubst -%,%,$(2)))), \
-     $$(eval $$(call *.compute.rhs,$(1),$(2)))))
+    $$(eval *.sign := $$($$(*.sign).toggle)) \
+    $$(eval $$(call *.reconfigure,$$(patsubst -%,%,$(1)),$(2))), \
+    $$(if $$(filter -%,$(2)), \
+      $$(eval *.sign := $$($$(*.sign).toggle)) \
+      $$(eval $$(call *.reconfigure,$(1),$$(patsubst -%,%,$(2)))), \
+      $$(eval $$(call *.compute.rhs,$(1),$(2)))))
 endef
 
 define *.configure
   *.sign := +
   *.result :=
+  $(foreach digit,$(call range,0,$(ase.ten)),$$(eval *.cache.$(digit) :=))
   $$(eval $$(call *.reconfigure,$$(call number,$(1)),$$(call number,$(2))))
 endef
 
@@ -313,14 +305,32 @@ endef
 <eq = $(if $(call >,$(1),$(2)),,+)
 >eq = $(if $(call <,$(1),$(2)),,+)
 
+define prompt
+  $(eval $$(shell printf $(1) >&2))$(eval $(2) := $$(shell head -1))
+endef
+
 ifneq ($(filter math,$(MAKECMDGOALS)),)
-  $(shell printf "operation [+,-,*,>,<>]: ">&2)
-  operation := $(shell head -1)
-  $(shell printf "lhs (#): " >&2)
-  lhs := $(shell head -1)
-  $(shell printf "rhs (#): ">&2)
-  rhs := $(shell head -1)
+  $(call prompt,$(subst ,,"operation [+,-,*,>,<>]: "),operation)
+  $(call prompt,"lhs (#): ",lhs)
+  $(call prompt,"rhs (#): ",rhs)
   $(info result: $(call $(operation),$(lhs),$(rhs)))
 .PHONY: math
 math: ; @true
 endif
+
+define random
+$(shell printf "%d" 0x`xxd -l 4 -p /dev/urandom`)
+endef
+
+ifneq ($(filter game,$(MAKECMDGOALS)),)
+
+define passages
+  $(call prompt,$(subst ,,"you are in a maze of twisty passeges, all alike"),move)
+endef
+
+$(eval $(value passages))
+
+game: ; @true
+
+endif
+
