@@ -277,6 +277,8 @@ define *.compute.rhs
   endif
 endef
 
+
+
 +.toggle = -
 -.toggle = +
 
@@ -293,7 +295,7 @@ endef
 define *.configure
   *.sign := +
   *.result :=
-  $(foreach digit,$(call range,0,$(ase.ten)),$$(eval *.cache.$(digit) :=))
+  $(foreach digit,$(call range,0,10),$$(eval *.cache.$(digit) :=))
   $$(eval $$(call *.reconfigure,$$(call number,$(1)),$$(call number,$(2))))
 endef
 
@@ -304,6 +306,96 @@ endef
 < = $(call >,$(2),$(1))
 <eq = $(if $(call >,$(1),$(2)),,+)
 >eq = $(if $(call <,$(1),$(2)),,+)
+
+
+# karatsuba implementation
+# splits a number of n digits into n/2 and (n+1)/2 digits.
+split = $(eval $(call split.compute,$(1),$(2)))$(if $(split.lhs),$(split.lhs),0) $(split.rhs) $(split.scale)
+
+define split.compute
+  split.lhs :=
+  split.rhs :=
+  split.scale :=
+  ifeq ($(2),)
+    $$(eval $$(call split.step,$(1)))
+  else
+    $$(eval $$(call split-n.step,$(1),$(2)))
+  endif
+endef
+
+define split-n.step
+  split.word := $(1)
+  split.digit := $$(call digit,$$(split.word))
+  split.rhs := $$(split.digit)$$(split.rhs)
+  split.word := $$(patsubst %$$(split.digit),%,$$(split.word))
+  split.scale := $$(split.scale)0
+  ifneq ($$(split.scale),$(2))
+    $$(eval $$(call split-n.step,$$(split.word),$(2)))
+  else
+    split.lhs := $$(split.word)
+  endif
+endef
+
+define split.step
+  split.word := $(1)
+  split.digit := $$(call digit,$$(split.word))
+  split.rhs := $$(split.digit)$$(split.rhs)
+  split.word := $$(patsubst %$$(split.digit),%,$$(split.word))
+  split.digit := $$(call ldigit,$$(split.word))
+  split.lhs := $$(split.lhs)$$(split.digit)
+  split.word := $$(patsubst $$(split.digit)%,%,$$(split.word))
+  split.scale := $$(split.scale)0
+  ifneq ($$(split.word),)
+    $$(eval $$(call split.step,$$(split.word)))
+  endif
+endef
+
+# karatsuba multiplcation
+define *-k.compute
+  *-k.lhs.split := $$(call split,$(1))
+  *-k.scale := $$(word 3,$$(*-k.lhs.split))
+  *-k.rhs.split := $$(call split,$(2),$$(*-k.scale))
+  *-k.lhs.hi := $$(word 1, $$(*-k.lhs.split))
+  *-k.lhs.lo := $$(word 2, $$(*-k.lhs.split))
+  *-k.rhs.hi := $$(word 1, $$(*-k.rhs.split))
+  *-k.rhs.lo := $$(word 2, $$(*-k.rhs.split))
+  $$(eval $$(call *-k.collect0,$$(*-k.scale),$$(*-k.lhs.lo),$$(*-k.lhs.hi),$$(*-k.rhs.lo),$$(*-k.rhs.hi)))
+endef
+
+define *-k.collect0
+  $(call *-k.collect,$1,\
+    $(call *-k,$(call +,$(2),$(3)),$$(call +,$(4),$(5))),\
+    $(call *-k,$(2),$(4)),\
+    $(call *-k,$(3),$(5)))
+endef
+
+define *-k.collect
+  *-k.result := $$(call +, $$(call +, $(4)$(1)$(1), $$(call -,$$(call -,$(2),$(3)),$(4))$(1)),$(3))
+endef
+
+define *-k.base
+  *-k.result := $$($(1)*$(2))
+endef
+
+define *-k.run
+  $$(if $$(call <,$(1),10),\
+    $$(eval $$(call *-k.base,$(1),$(2))),\
+    $$(eval $$(call *-k.compute,$(1),$(2))))
+endef
+
+define *-k.configure
+ $$(if $$(call >,$(1),$(2)), \
+    $$(eval $$(call *-k.run,$(1),$(2))), \
+    $$(eval $$(call *-k.run,$(2),$(1))))
+endef
+
+# doesn't handle negatives yet, doesn't recurse efficiently
+*-k = $(eval $(call *-k.configure,$(1),$(2)))$(*-k.result)
+
+#L=111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+#R=111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+#$(info $(L)*$(R) = $(call *,$(L),$(R)))
+#$(info $(L)*$(R) = $(call *-k,$(L),$(R)))
 
 define prompt
   $(eval $$(shell printf $(1) >&2))$(eval $(2) := $$(shell head -1))
