@@ -351,6 +351,7 @@ define split.step
 endef
 
 # karatsuba multiplcation
+# splits lhs and rhs into equal parts A,B C,D where B and D are the low digits
 define *-k.compute
   *-k.lhs.split := $$(call split,$(1))
   *-k.scale := $$(word 3,$$(*-k.lhs.split))
@@ -362,6 +363,7 @@ define *-k.compute
   $$(eval $$(call *-k.collect0,$$(*-k.scale),$$(*-k.lhs.lo),$$(*-k.lhs.hi),$$(*-k.rhs.lo),$$(*-k.rhs.hi)))
 endef
 
+# Takes scale, A,B C,D and calls collect(scale, (A+B)*(C+D),B*D,A*C)
 define *-k.collect0
   $(call *-k.collect,$1,\
     $(call *-k,$(call +,$(2),$(3)),$$(call +,$(4),$(5))),\
@@ -369,8 +371,10 @@ define *-k.collect0
     $(call *-k,$(3),$(5)))
 endef
 
+# Takes scale, (A+B)*(C+D),B*D,A*C) and stores result of
+#   A*C.scale.scale + ((A+B)*(C+D) - B*D - A*C = A*D + B*C).scale + B*D
 define *-k.collect
-  *-k.result := $$(call +, $$(call +, $(4)$(1)$(1), $$(call -,$$(call -,$(2),$(3)),$(4))$(1)),$(3))
+  *-k.result := $(call +, $(call +, $(4)$(1)$(1), $(call -,$(call -,$(2),$(3)),$(4))$(1)),$(3))
 endef
 
 define *-k.base
@@ -391,11 +395,6 @@ endef
 
 # doesn't handle negatives yet, doesn't recurse efficiently
 *-k = $(eval $(call *-k.configure,$(1),$(2)))$(*-k.result)
-
-#L=111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
-#R=111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
-#$(info $(L)*$(R) = $(call *,$(L),$(R)))
-#$(info $(L)*$(R) = $(call *-k,$(L),$(R)))
 
 define prompt
   $(eval $$(shell printf $(1) >&2))$(eval $(2) := $$(shell head -1))
