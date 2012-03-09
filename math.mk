@@ -366,9 +366,9 @@ endef
 # Takes scale, A,B C,D and calls collect(scale, (A+B)*(C+D),B*D,A*C)
 define *-k.collect0
   $(call *-k.collect,$1,\
-    $(call *-k,$(call +,$(2),$(3)),$$(call +,$(4),$(5))),\
-    $(call *-k,$(2),$(4)),\
-    $(call *-k,$(3),$(5)))
+    $(call *-k.reentry,$(call +,$(2),$(3)),$$(call +,$(4),$(5))),\
+    $(call *-k.reentry,$(2),$(4)),\
+    $(call *-k.reentry,$(3),$(5)))
 endef
 
 # Takes scale, (A+B)*(C+D),B*D,A*C) and stores result of
@@ -387,21 +387,39 @@ define *-k.run
     $$(eval $$(call *-k.compute,$(1),$(2))))
 endef
 
-define *-k.configure
+define *-k.entry
  $$(if $$(call >,$(1),$(2)), \
     $$(eval $$(call *-k.run,$(1),$(2))), \
     $$(eval $$(call *-k.run,$(2),$(1))))
 endef
 
-# doesn't handle negatives yet, doesn't recurse efficiently
-*-k = $(eval $(call *-k.configure,$(1),$(2)))$(*-k.result)
+*-k.reentry = $(eval $(call *-k.entry,$(1),$(2)))$(*-k.result)
+
+define *-k.configure
+  $$(if $$(filter -%,$(1)), \
+    $$(eval *-k.sign := $$($$(*-k.sign).toggle)) \
+    $$(eval $$(call *-k.configure,$$(patsubst -%,%,$(1)),$(2))), \
+    $$(if $$(filter -%,$(2)), \
+      $$(eval *-k.sign := $$($$(*-k.sign).toggle)) \
+      $$(eval $$(call *-k.entry,$(1),$$(patsubst -%,%,$(2)))), \
+      $$(eval $$(call *-k.entry,$(1),$(2)))))
+endef
+
+
+define *-k.execute
+  *-k.sign := +
+  *-k.result :=
+  $(call *-k.configure,$(1),$(2))
+endef
+
+*-k = $(eval $(call *-k.execute,$(1),$(2)))$(call number,$(*-k.sign)$(*-k.result))
 
 define prompt
   $(eval $$(shell printf $(1) >&2))$(eval $(2) := $$(shell head -1))
 endef
 
 ifneq ($(filter math,$(MAKECMDGOALS)),)
-  $(call prompt,$(subst ,,"operation [+,-,*,>,<>]: "),operation)
+  $(call prompt,$(subst ,,"operation [+,-,*,>,<>,*-k]: "),operation)
   $(call prompt,"lhs (#): ",lhs)
   $(call prompt,"rhs (#): ",rhs)
   $(info result: $(call $(operation),$(lhs),$(rhs)))
@@ -416,10 +434,11 @@ endef
 ifneq ($(filter game,$(MAKECMDGOALS)),)
 
 define passages
-  $(call prompt,$(subst ,,"you are in a maze of twisty passeges, all alike"),move)
+  $(call prompt,$(subst ,,"you are in a maze of twisty passeges, all alike: "),move)
 endef
 
 $(eval $(value passages))
+$(eval $$(info $(move)))
 
 game: ; @true
 
