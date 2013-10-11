@@ -405,7 +405,6 @@ define *-k.configure
       $$(eval $$(call *-k.entry,$(1),$(2)))))
 endef
 
-
 define *-k.execute
   *-k.sign := +
   *-k.result :=
@@ -419,9 +418,15 @@ define prompt
 endef
 
 ifneq ($(filter math,$(MAKECMDGOALS)),)
+ifndef operation
   $(call prompt,$(subst ,,"operation [+,-,*,>,<>,*-k]: "),operation)
+endif
+ifndef lhs
   $(call prompt,"lhs (#): ",lhs)
+endif
+ifndef rhs
   $(call prompt,"rhs (#): ",rhs)
+endif
   $(info result: $(call $(operation),$(lhs),$(rhs)))
 .PHONY: math
 math: ; @true
