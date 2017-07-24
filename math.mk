@@ -431,21 +431,3 @@ endif
 .PHONY: math
 math: ; @true
 endif
-
-define random
-$(shell printf "%d" 0x`xxd -l 4 -p /dev/urandom`)
-endef
-
-ifneq ($(filter game,$(MAKECMDGOALS)),)
-
-define passages
-  $(call prompt,$(subst ,,"you are in a maze of twisty passeges, all alike: "),move)
-endef
-
-$(eval $(value passages))
-$(eval $$(info $(move)))
-
-game: ; @true
-
-endif
-
