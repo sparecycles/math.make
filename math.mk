@@ -2,7 +2,7 @@
 # math.mk
 #
 # Basic mathematical functions and iteration in GNUmake.
-# Defines +,-,<> >
+# Defines +,-,<>,>,* (bonus *-k implementation)
 #------------
 
 #------------
